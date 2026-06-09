@@ -1,0 +1,67 @@
+# Nex-Trends Prospect Scraper Configuration
+
+# Target business types (multi-vertical)
+target_industries:
+  - restaurants
+  - retail
+  - professional_services
+  - home_services
+  - healthcare
+  - automotive
+  - beauty_wellness
+  - real_estate
+  - legal
+  - financial
+
+# Geographic focus
+target_geos:
+  - Las Vegas, NV
+  - Clark County, NV
+  - Henderson, NV
+
+# Gap detection weights (0-10 scoring)
+scoring:
+  weights:
+    website_slow: 2          # PageSpeed < 50
+    website_not_mobile: 2    # Not mobile-friendly
+    website_no_ssl: 1        # No HTTPS
+    website_outdated: 2      # Design looks 5+ years old
+    no_social_presence: 2    # No Facebook/Instagram
+    social_inactive: 1       # Last post > 90 days
+    no_online_reviews: 1     # < 5 reviews on Google/Yelp
+    no_chat_widget: 1        # No live chat or chatbot
+    high_call_volume: 2      # Phones as primary contact
+    tech_complaints: 3       # Customers complaining about tech
+  
+  # Opportunity tiers
+  tiers:
+    hot: 7      # 7-10: High-value opportunity
+    warm: 4     # 4-6: Moderate opportunity  
+    cold: 1     # 1-3: Low opportunity
+
+# Web analysis
+web_analysis:
+  enabled: true
+  check_ssl: true
+  check_mobile: true
+  check_speed: true
+  screenshot: false  # Optional visual analysis
+
+# Social media monitoring
+social_monitoring:
+  enabled: true
+  platforms:
+    - facebook
+    - instagram
+    - twitter
+  activity_threshold_days: 90  # Flag if no post in 90 days
+
+database:
+  path: ./data/nex_prospects.db
+
+export:
+  csv_path: ./data/prospects.csv
+
+landing_pages:
+  primary: https://nex-trends.com/ai-growth-w-page
+  # Additional landing pages to be added
