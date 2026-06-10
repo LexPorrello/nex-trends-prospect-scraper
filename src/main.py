@@ -1,91 +1,98 @@
-"""Main CLI for Nex-Trends Prospect Scraper."""
+"""Main CLI for Nex-Trends Prospect Scraper with Hermes webhook triggers."""
 import sys
 import yaml
+import httpx
 from pathlib import Path
 from dotenv import load_dotenv
 from typing import List, Dict, Any
 
 from detectors.gap_detector import GapDetector
 
+# Hermes webhook URL
+WEBHOOK_URL = "http://127.0.0.1:5000/webhook/nex-trends-router"
 load_dotenv()
 
-def load_config() -> dict:
-    """Load configuration from config.yaml."""
+def load_config():
     config_path = Path(__file__).parent.parent / 'config.yaml'
     with open(config_path) as f:
         return yaml.safe_load(f)
 
+def send_to_hermes(business: dict):
+    """Push HOT/WARM opportunity to Hermes scoring engine."""
+    try:
+        payload = {
+            "business_name": business['business_name'],
+            "website": business.get('website', ''),
+            "phone": business.get('phone', ''),
+            "industry": business.get('industry', 'general'),
+            "gap_score": business['gap_score'],
+            "opportunity_tier": business['opportunity_tier'],
+            "gaps": business.get('gaps', []),
+            "has_chat_widget": business.get('has_chat_widget'),
+        }
+        resp = httpx.post(WEBHOOK_URL, json=payload, timeout=10)
+        resp.raise_for_status()
+        return True
+    except Exception as e:
+        print(f"⚠️  Webhook failed: {e}")
+        return False
+
 def cmd_discover():
-    """Run discovery across all target industries."""
-    print("🚀 Starting Nex-Trends Prospect Discovery...")
-    
+    """Run discovery with Hermes webhook routing."""
+    print("🚀 Nex-Trends Discovery + Hermes Scoring Engine")
     config = load_config()
     detector = GapDetector(config)
     
-    # Get stub businesses for testing
-    stub_businesses = get_stub_businesses()
+    businesses = get_stub_businesses()
+    print(f"📊 Analyzing {len(businesses)} businesses...\n")
     
-    print(f"📊 Analyzing {len(stub_businesses)} businesses for service gaps...\n")
+    hermes_count = 0
     
-    analyzed = []
-    for business in stub_businesses:
-        print(f"🔍 Analyzing: {business['business_name']}")
+    for business in businesses:
+        print(f"🔍 {business['business_name']}")
         enriched = detector.detect_all_gaps(business)
-        analyzed.append(enriched)
         
-        # Print summary
-        print(f"   Gaps: {len(enriched['gaps'])} detected")
-        print(f"   Score: {enriched['gap_score']}/10")
-        print(f"   Tier: {enriched['opportunity_tier'].upper()}")
+        # Route HOT/WARM to Hermes
+        tier = enriched['opportunity_tier']
+        if tier in ['hot', 'warm']:
+            sent = send_to_hermes(enriched)
+            if sent:
+                hermes_count += 1
+                action = "→ Hermes"
+            else:
+                action = "→ Local only"
+        else:
+            action = ""
+        
+        print(f"   Score: {enriched['gap_score']}/10 | {tier.upper()} {action}")
         if enriched['gaps']:
-            print(f"   Issues: {', '.join(enriched['gaps'])}")
+            print(f"   Gaps: {', '.join(enriched['gaps'])}")
         print()
     
-    # Summary
-    hot = [b for b in analyzed if b['opportunity_tier'] == 'hot']
-    warm = [b for b in analyzed if b['opportunity_tier'] == 'warm']
-    cold = [b for b in analyzed if b['opportunity_tier'] == 'cold']
-    
-    print(f"✅ Discovery complete!")
-    print(f"   HOT prospects: {len(hot)}")
-    print(f"   WARM prospects: {len(warm)}")
-    print(f"   COLD prospects: {len(cold)}")
+    print(f"\n✅ Done. Hermes routed: {hermes_count}")
 
 def cmd_analyze():
-    """Analyze a single business by URL."""
     if len(sys.argv) < 3:
-        print("Usage: python src/main.py analyze <website_url>")
+        print("Usage: python src/main.py analyze <url>")
         sys.exit(1)
     
     url = sys.argv[2]
-    
     config = load_config()
     detector = GapDetector(config)
     
-    business = {
-        'business_name': 'Manual Analysis',
-        'website': url
-    }
-    
-    print(f"🔍 Analyzing: {url}\n")
+    business = {'business_name': 'Manual', 'website': url}
     result = detector.detect_all_gaps(business)
     
-    print(f"Gap Score: {result['gap_score']}/10")
-    print(f"Opportunity Tier: {result['opportunity_tier'].upper()}")
-    print(f"\nGaps Detected ({len(result['gaps'])}):")
-    for gap in result['gaps']:
-        print(f"  - {gap}")
-    
-    print(f"\nWeb Analysis:")
-    for key, value in result.get('web_analysis', {}).items():
-        print(f"  {key}: {value}")
+    print(f"Score: {result['gap_score']}/10 | {result['opportunity_tier'].upper()}")
+    if result['tier'] in ['hot', 'warm']:
+        send_to_hermes(result)
+        print("→ Routed to Hermes")
 
 def get_stub_businesses() -> List[Dict[str, Any]]:
-    """Return stub business data for testing."""
     return [
         {
             'business_name': 'Desert Dental Care',
-            'website': 'http://example-dental-old.com',  # HTTP, no SSL
+            'website': 'http://example-dental-old.com',
             'phone': '(702) 555-0100',
             'industry': 'healthcare'
         },
@@ -104,23 +111,17 @@ def get_stub_businesses() -> List[Dict[str, Any]]:
     ]
 
 def main():
-    """Main entry point."""
     if len(sys.argv) < 2:
-        print("Usage: python src/main.py [command]")
-        print("\nCommands:")
-        print("  discover       - Run full discovery across industries")
-        print("  analyze <url>  - Analyze a single business website")
+        print("Usage: python src/main.py [discover|analyze <url>]")
         sys.exit(1)
     
-    command = sys.argv[1]
-    
-    if command == 'discover':
+    cmd = sys.argv[1]
+    if cmd == 'discover':
         cmd_discover()
-    elif command == 'analyze':
+    elif cmd == 'analyze':
         cmd_analyze()
     else:
-        print(f"Unknown command: {command}")
-        sys.exit(1)
+        print(f"Unknown: {cmd}")
 
 if __name__ == '__main__':
     main()
